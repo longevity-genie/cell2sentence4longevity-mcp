@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "cell2sentence4longevity": {
+      "url": "http://localhost:3002/mcp",
+      "transport": "streamable-http",
+      "env": {
+        "VLLM_BASE_URL": "http://89.169.110.141:8000",
+        "VLLM_MODEL": "transhumanist-already-exists/C2S-Scale-Gemma-2-27B-age-prediction-fullft"
+      }
+    }
+  }
+}
+

@@ -1,0 +1,36 @@
+[project]
+name = "cell2sentence4longevity-mcp"
+version = "0.1.0"
+description = "MCP for cell2sentence4longevity age prediction using vLLM"
+readme = "README.md"
+authors = [
+    { name = "antonkulaga", email = "antonkulaga@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.13.1",
+    "litellm>=1.55.8",
+    "eliot>=1.17.5",
+    "pycomfort>=0.0.18",
+    "typer>=0.16.0",
+    "pydantic>=2.0.0",
+    "polars>=1.35.2",
+    "jupyter>=1.1.1",
+]
+
+[project.scripts]
+cell2sentence4longevity-mcp = "cell2sentence4longevity_mcp.server:cli_app_stdio"
+cell2sentence4longevity-mcp-stdio = "cell2sentence4longevity_mcp.server:cli_app_stdio"
+cell2sentence4longevity-mcp-sse = "cell2sentence4longevity_mcp.server:cli_app_sse"
+cell2sentence4longevity-mcp-run = "cell2sentence4longevity_mcp.server:cli_app_run"
+
+[build-system]
+requires = ["uv_build>=0.9.7,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
+    "ruff>=0.12.1"
+]
