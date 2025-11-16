@@ -8,8 +8,10 @@ from pathlib import Path
 import typer
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
-from eliot import start_action
+from eliot import start_action, to_file
 import requests
+
+from cell2sentence4longevity_mcp.knockout import insilico_knockout, KnockoutResult
 
 # Configuration
 DEFAULT_HOST = os.getenv("MCP_HOST", "0.0.0.0")
@@ -17,6 +19,16 @@ DEFAULT_PORT = int(os.getenv("MCP_PORT", "3002"))
 DEFAULT_TRANSPORT = os.getenv("MCP_TRANSPORT", "streamable-http")
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://89.169.110.141:8000")
 DEFAULT_MODEL = os.getenv("VLLM_MODEL", "transhumanist-already-exists/C2S-Scale-Gemma-2-27B-age-prediction-fullft")
+
+# Setup logging for MCP server
+def setup_mcp_logging() -> None:
+    """Setup eliot logging for MCP server to avoid stderr interference."""
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    json_path = log_dir / "mcp_server.json"
+    # Only log to file, not stdout/stderr to avoid interfering with MCP protocol
+    to_file(open(str(json_path), "a"))
 
 def get_example_payload_path() -> Optional[Path]:
     """Get the path to the example payload file."""
@@ -66,6 +78,11 @@ class Cell2SentenceMCP(FastMCP):
             name="predict_age_with_metadata",
             description="Predict the age of a cell donor from a gene expression sentence with additional metadata. Provide the gene expression sentence, sex, tissue, cell type, and other relevant metadata."
         )(self.predict_age_with_metadata)
+        
+        self.tool(
+            name="insilico_knockout",
+            description="Perform an insilico knockout experiment by removing a specific gene from the gene expression sentence and comparing age predictions. Provide the gene symbol to knock out and the gene expression sentence. Returns original age, knockout age, delta, and a warning if the gene was not found."
+        )(self.insilico_knockout_tool)
     
     def _register_resources(self):
         """Register Cell2Sentence-specific resources."""
@@ -302,7 +319,60 @@ Answer only with age value in years:"""
             except Exception as e:
                 action.log(message_type="prediction_error", error=str(e))
                 raise ValueError(f"Error during age prediction: {e}") from e
+    
+    def insilico_knockout_tool(
+        self,
+        gene_symbol: str,
+        gene_sentence: str,
+        sex: Optional[str] = None,
+        smoking_status: Optional[int] = None,
+        tissue: Optional[str] = None,
+        cell_type: Optional[str] = None,
+        max_tokens: int = 20,
+        temperature: float = 0.0,
+        top_p: float = 1.0
+    ) -> KnockoutResult:
+        """
+        Perform an insilico knockout experiment by removing a specific gene from the sentence.
+        
+        This tool:
+        1. Predicts age from the original gene sentence
+        2. Removes the specified gene symbol from the sentence
+        3. Predicts age again with the knockout sentence
+        4. Computes the delta
+        5. Warns if the gene was not found in the sentence
+        
+        Args:
+            gene_symbol: The gene symbol to knock out (remove from the sentence)
+            gene_sentence: Space-separated list of gene names ordered by descending expression level
+            sex: Sex of the donor (e.g., 'male', 'female')
+            smoking_status: Smoking status (0 = non-smoker, 1 = smoker)
+            tissue: Tissue type (e.g., 'blood', 'brain', 'liver')
+            cell_type: Cell type (e.g., 'CD14-low, CD16-positive monocyte')
+            max_tokens: Maximum number of tokens to generate (default: 20)
+            temperature: Sampling temperature (default: 0.0 for deterministic output)
+            top_p: Nucleus sampling parameter (default: 1.0)
+            
+        Returns:
+            KnockoutResult: Contains original age, knockout age, delta, gene information, and optional warning
+        """
+        return insilico_knockout(
+            gene_symbol=gene_symbol,
+            gene_sentence=gene_sentence,
+            vllm_base_url=self.vllm_base_url,
+            model=self.model,
+            sex=sex,
+            smoking_status=smoking_status,
+            tissue=tissue,
+            cell_type=cell_type,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p
+        )
 
+
+# Setup logging before initializing MCP server
+setup_mcp_logging()
 
 # Initialize the Cell2Sentence MCP server (which inherits from FastMCP)
 mcp = Cell2SentenceMCP()

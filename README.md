@@ -12,16 +12,17 @@ The server uses the vLLM completions API directly via HTTP requests, making it e
 
 - **Age Prediction**: Predict donor age from gene expression "cell sentences"
 - **Metadata Support**: Include additional information like sex, tissue type, cell type, and smoking status
+- **Insilico Knockout**: Test the effect of removing genes on age prediction
 - **Multiple Transport Options**: Supports stdio, SSE, and streamable-http transports
+- **CLI Tools**: Standalone command-line interface for direct usage
 - **Structured Output**: Returns both raw model response and parsed age prediction
 - **Example Resources**: Provides example prompts and model information
 
 ## Installation
 
-Using `uv`:
+Using `uv` from the project root:
 
 ```bash
-cd /home/antonkulaga/sources/cell2sentence4longevity-mcp
 uv sync
 ```
 
@@ -136,6 +137,111 @@ predict_age_with_metadata(
 )
 ```
 
+### insilico_knockout
+
+Perform an insilico knockout experiment by removing the first gene (highest expressed) from the gene expression sentence and comparing age predictions.
+
+**Parameters:**
+- `gene_sentence` (str): Space-separated list of gene names ordered by descending expression level
+- `sex` (str, optional): Sex of the donor (e.g., 'male', 'female')
+- `smoking_status` (int, optional): 0 = non-smoker, 1 = smoker
+- `tissue` (str, optional): Tissue type (e.g., 'blood', 'brain')
+- `cell_type` (str, optional): Cell type (e.g., 'CD14-low, CD16-positive monocyte')
+- `max_tokens` (int, optional): Maximum tokens to generate (default: 20)
+- `temperature` (float, optional): Sampling temperature (default: 0.0)
+- `top_p` (float, optional): Nucleus sampling parameter (default: 1.0)
+
+**Returns:**
+- `gene_knocked_out`: The gene that was removed (first in the list)
+- `age_prediction`: Predicted age with the full gene sentence
+- `age_prediction_with_knockout`: Predicted age after removing the gene
+- `delta_age`: Change in predicted age (knockout - original)
+- `original_gene_sentence`: Original gene expression sentence
+- `knockout_gene_sentence`: Gene expression sentence after knockout
+- `model`: The model used for prediction
+
+**Example:**
+```python
+insilico_knockout(
+    gene_sentence="MT-CO1 FTL EEF1A1 HLA-B LST1 S100A4 HLA-C H3-3B ZFP36 AIF1",
+    sex="female",
+    tissue="blood"
+)
+```
+
+## CLI Tools
+
+In addition to the MCP server, this package provides standalone CLI tools for direct usage.
+
+### cell2sentence-cli
+
+The CLI provides commands for performing insilico knockout experiments directly from the command line.
+
+#### Basic Knockout Command
+
+Remove the first gene from a gene sentence and compare age predictions:
+
+```bash
+uv run cell2sentence-cli knockout "MT-CO1 FTL EEF1A1 HLA-B LST1 S100A4" \
+  --sex female \
+  --tissue blood \
+  --cell-type "CD14-low, CD16-positive monocyte"
+```
+
+**Output formats:**
+
+- **Text (default)**:
+```
+Gene knocked out: MT-CO1
+Age prediction (original): 46.0
+Age prediction (knockout): 46.0
+Delta age: 0.0
+```
+
+- **CSV**: `--format csv`
+```csv
+gene_knocked_out,age_prediction,age_prediction_with_knockout,delta_age
+MT-CO1,46.0,46.0,0.0
+```
+
+- **JSON**: `--format json`
+```json
+{
+  "gene_knocked_out": "MT-CO1",
+  "age_prediction": 46.0,
+  "age_prediction_with_knockout": 46.0,
+  "delta_age": 0.0,
+  "original_gene_sentence": "MT-CO1 FTL EEF1A1 HLA-B LST1 S100A4",
+  "knockout_gene_sentence": "FTL EEF1A1 HLA-B LST1 S100A4",
+  "model": "transhumanist-already-exists/C2S-Scale-Gemma-2-27B-age-prediction-fullft"
+}
+```
+
+#### Knockout from Payload File
+
+Use an existing payload JSON file (like the example in `data/example/vllm_payload.json`):
+
+```bash
+uv run cell2sentence-cli knockout-from-payload data/example/vllm_payload.json --format csv
+```
+
+This automatically extracts the gene sentence and metadata from the payload.
+
+**All CLI Options:**
+
+```bash
+uv run cell2sentence-cli knockout --help
+uv run cell2sentence-cli knockout-from-payload --help
+```
+
+**Logging:**
+
+The CLI logs to `logs/knockout.json` and `logs/knockout.log` by default. You can customize the log directory:
+
+```bash
+uv run cell2sentence-cli knockout "GENE1 GENE2 GENE3" --log-dir ./my-logs
+```
+
 ## Resources
 
 ### resource://cell2sentence/example-prompt
@@ -182,6 +288,19 @@ The tools return an `AgePredictionResult` containing:
 - `raw_response`: The raw text response from the model
 - `prompt_used`: The complete prompt sent to the model
 - `model`: The model name used for prediction
+
+## Testing
+
+Run the test suite:
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific test modules
+uv run python test/test_knockout.py
+uv run python test/test_mcp_performance.py
+```
 
 ## Development
 

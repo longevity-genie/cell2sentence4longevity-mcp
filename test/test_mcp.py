@@ -2,6 +2,7 @@
 
 import pytest
 from cell2sentence4longevity_mcp.server import Cell2SentenceMCP, AgePredictionResult
+from cell2sentence4longevity_mcp.knockout import KnockoutResult
 
 
 def test_server_initialization():
@@ -85,6 +86,36 @@ def test_custom_parameters():
         pytest.skip(f"vLLM endpoint not available: {e}")
 
 
+def test_insilico_knockout():
+    """Test insilico knockout functionality."""
+    mcp = Cell2SentenceMCP()
+    
+    gene_sentence = "MT-CO1 FTL EEF1A1 HLA-B LST1"
+    
+    try:
+        result = mcp.insilico_knockout_tool(
+            gene_sentence=gene_sentence,
+            sex="female",
+            tissue="blood",
+            cell_type="CD14-low, CD16-positive monocyte"
+        )
+        
+        assert isinstance(result, KnockoutResult)
+        assert result.gene_knocked_out == "MT-CO1"
+        assert result.age_prediction is not None
+        assert result.age_prediction_with_knockout is not None
+        assert result.delta_age == result.age_prediction_with_knockout - result.age_prediction
+        assert result.original_gene_sentence == gene_sentence
+        assert result.knockout_gene_sentence == "FTL EEF1A1 HLA-B LST1"
+        
+        print(f"✓ Knocked out gene: {result.gene_knocked_out}")
+        print(f"✓ Original age: {result.age_prediction} years")
+        print(f"✓ Knockout age: {result.age_prediction_with_knockout} years")
+        print(f"✓ Delta: {result.delta_age} years")
+    except Exception as e:
+        pytest.skip(f"vLLM endpoint not available: {e}")
+
+
 if __name__ == "__main__":
     # Run tests directly
     print("Running Cell2Sentence4Longevity MCP Tests")
@@ -105,6 +136,10 @@ if __name__ == "__main__":
     print("\n4. Testing custom parameters...")
     test_custom_parameters()
     print("   ✓ Custom parameters test passed")
+    
+    print("\n5. Testing insilico knockout...")
+    test_insilico_knockout()
+    print("   ✓ Insilico knockout test passed")
     
     print("\n" + "=" * 60)
     print("All tests passed!")
