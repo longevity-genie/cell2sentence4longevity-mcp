@@ -24,6 +24,7 @@ cell2sentence4longevity-mcp-stdio = "cell2sentence4longevity_mcp.server:cli_app_
 cell2sentence4longevity-mcp-sse = "cell2sentence4longevity_mcp.server:cli_app_sse"
 cell2sentence4longevity-mcp-run = "cell2sentence4longevity_mcp.server:cli_app_run"
 cell2sentence-cli = "cell2sentence4longevity_mcp.cli:app"
+knockout = "cell2sentence4longevity_mcp.cli:app"
 
 [build-system]
 requires = ["uv_build>=0.9.7,<0.10.0"]
@@ -35,3 +36,4 @@ dev = [
     "pytest-asyncio>=1.0.0",
     "ruff>=0.12.1"
 ]
+ 

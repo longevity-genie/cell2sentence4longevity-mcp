@@ -29,7 +29,8 @@ def predict_age_from_sentence(
     cell_type: Optional[str] = None,
     max_tokens: int = 20,
     temperature: float = 0.0,
-    top_p: float = 1.0
+    top_p: float = 1.0,
+    gene_to_remove: Optional[str] = None
 ) -> float:
     """
     Predict age from a gene expression sentence.
@@ -45,6 +46,7 @@ def predict_age_from_sentence(
         max_tokens: Maximum number of tokens to generate
         temperature: Sampling temperature
         top_p: Nucleus sampling parameter
+        gene_to_remove: Gene symbol to remove from the entire prompt (for knockout experiments)
         
     Returns:
         Predicted age as a float
@@ -72,6 +74,18 @@ def predict_age_from_sentence(
         prompt_parts.append("Answer only with age value in years:")
         
         prompt = "\n".join(prompt_parts)
+        
+        # Remove the gene symbol from the entire prompt if specified
+        if gene_to_remove:
+            # Replace gene symbol followed by space, or space followed by gene symbol
+            import re
+            # Remove gene with surrounding spaces, then clean up multiple spaces
+            prompt = prompt.replace(f" {gene_to_remove} ", " ")
+            prompt = prompt.replace(f" {gene_to_remove}", "")
+            prompt = prompt.replace(f"{gene_to_remove} ", "")
+            # Clean up any multiple spaces
+            prompt = re.sub(r'\s+', ' ', prompt)
+            action.log(message_type="gene_removed_from_prompt", gene=gene_to_remove)
         
         # Use vLLM completions API directly
         payload = {
@@ -119,17 +133,16 @@ def insilico_knockout(
     top_p: float = 1.0
 ) -> KnockoutResult:
     """
-    Perform an insilico knockout experiment by removing a specific gene from the sentence.
+    Perform an insilico knockout experiment by removing a specific gene from the entire prompt.
     
     This function:
     1. Predicts age from the original gene sentence
-    2. Removes the specified gene symbol from the sentence
-    3. Predicts age again with the knockout sentence
-    4. Computes the delta
-    5. Warns if the gene was not found in the sentence
+    2. Predicts age again with the gene symbol removed from the entire prompt
+    3. Computes the delta
+    4. Warns if the gene was not found in the sentence
     
     Args:
-        gene_symbol: The gene symbol to knock out (remove from the sentence)
+        gene_symbol: The gene symbol to knock out (remove from the entire prompt)
         gene_sentence: Space-separated list of gene names ordered by descending expression level
         vllm_base_url: Base URL for the vLLM API server
         model: Model name to use for prediction
@@ -161,7 +174,7 @@ def insilico_knockout(
             warning_msg = f"Warning: Gene '{gene_symbol}' not found in the gene sentence"
             action.log(message_type="gene_not_found", gene=gene_symbol, warning=warning_msg)
         
-        # Remove the specified gene from the sentence
+        # Create knockout sentence by removing the gene
         knockout_genes = [g for g in genes if g != gene_symbol]
         knockout_sentence = " ".join(knockout_genes)
         
@@ -173,7 +186,7 @@ def insilico_knockout(
             knockout_count=len(knockout_genes)
         )
         
-        # Predict age with original sentence
+        # Predict age with original sentence (no gene removal)
         age_original = predict_age_from_sentence(
             gene_sentence=gene_sentence,
             vllm_base_url=vllm_base_url,
@@ -184,12 +197,13 @@ def insilico_knockout(
             cell_type=cell_type,
             max_tokens=max_tokens,
             temperature=temperature,
-            top_p=top_p
+            top_p=top_p,
+            gene_to_remove=None
         )
         
-        # Predict age with knockout sentence
+        # Predict age with gene removed from entire prompt
         age_knockout = predict_age_from_sentence(
-            gene_sentence=knockout_sentence,
+            gene_sentence=gene_sentence,  # Keep original sentence
             vllm_base_url=vllm_base_url,
             model=model,
             sex=sex,
@@ -198,7 +212,8 @@ def insilico_knockout(
             cell_type=cell_type,
             max_tokens=max_tokens,
             temperature=temperature,
-            top_p=top_p
+            top_p=top_p,
+            gene_to_remove=gene_symbol  # Remove gene from entire prompt
         )
         
         # Calculate delta

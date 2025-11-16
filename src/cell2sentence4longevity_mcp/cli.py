@@ -194,6 +194,99 @@ def knockout_from_payload(
                 typer.echo(f"Warning: {result.warning}")
 
 
+@app.command(name="ko")
+def ko_short(
+    gene_symbol: str = typer.Argument(..., help="Gene symbol to knock out"),
+    payload_file: Optional[Path] = typer.Option(None, "--payload", "-p", help="Path to payload JSON file (if not provided, reads from data/example/vllm_payload.json)"),
+    vllm_base_url: str = typer.Option(DEFAULT_VLLM_BASE_URL, "--vllm-url", help="Base URL for the vLLM API server"),
+    model: Optional[str] = typer.Option(None, "--model", help="Model name (overrides payload)"),
+    output_format: str = typer.Option("text", "--format", "-f", help="Output format: text, json, or csv"),
+    log_dir: Optional[Path] = typer.Option(None, "--log-dir", help="Directory for log files"),
+) -> None:
+    """
+    Short command for in silico knockout experiments.
+    
+    Example:
+        cell2sentence-cli ko KLF6
+        cell2sentence-cli ko MT-CO1 -p data/example/vllm_payload.json
+        cell2sentence-cli ko FTL --format json
+    """
+    setup_logging(log_dir)
+    
+    # Default to example payload if not provided
+    if payload_file is None:
+        payload_file = Path("data/example/vllm_payload.json")
+    
+    if not payload_file.exists():
+        typer.echo(f"Error: Payload file not found: {payload_file}", err=True)
+        raise typer.Exit(code=1)
+    
+    with start_action(action_type="cli_ko_short", gene_symbol=gene_symbol, payload_file=str(payload_file)):
+        # Load payload
+        with open(payload_file, 'r') as f:
+            payload = json.load(f)
+        
+        # Extract parameters from the prompt
+        prompt = payload.get("prompt", "")
+        
+        # Parse the prompt to extract metadata and gene sentence
+        sex = None
+        smoking_status = None
+        tissue = None
+        cell_type = None
+        gene_sentence = ""
+        
+        for line in prompt.split('\n'):
+            line = line.strip()
+            if line.startswith("Sex:"):
+                sex = line.split(":", 1)[1].strip()
+            elif line.startswith("Smoking status:"):
+                smoking_status = int(line.split(":", 1)[1].strip())
+            elif line.startswith("Tissue:"):
+                tissue = line.split(":", 1)[1].strip()
+            elif line.startswith("Cell type:"):
+                cell_type = line.split(":", 1)[1].strip()
+            elif line.startswith("Aging related cell sentence:"):
+                gene_sentence = line.split(":", 1)[1].strip()
+        
+        if not gene_sentence:
+            typer.echo("Error: Could not extract gene sentence from payload prompt", err=True)
+            raise typer.Exit(code=1)
+        
+        # Use model from command line or payload
+        model_name = model or payload.get("model", DEFAULT_MODEL)
+        
+        result = insilico_knockout(
+            gene_symbol=gene_symbol,
+            gene_sentence=gene_sentence,
+            vllm_base_url=vllm_base_url,
+            model=model_name,
+            sex=sex,
+            smoking_status=smoking_status,
+            tissue=tissue,
+            cell_type=cell_type,
+            max_tokens=payload.get("max_tokens", 20),
+            temperature=payload.get("temperature", 0.0),
+            top_p=payload.get("top_p", 1.0)
+        )
+        
+        # Output in the requested format
+        if output_format == "json":
+            typer.echo(result.model_dump_json(indent=2))
+        elif output_format == "csv":
+            # CSV header
+            typer.echo("gene_knocked_out,age_prediction,age_prediction_with_knockout,delta_age,warning")
+            # CSV data
+            typer.echo(f"{result.gene_knocked_out},{result.age_prediction},{result.age_prediction_with_knockout},{result.delta_age},{result.warning or ''}")
+        else:  # text format
+            typer.echo(f"Gene knocked out: {result.gene_knocked_out}")
+            typer.echo(f"Age prediction (original): {result.age_prediction}")
+            typer.echo(f"Age prediction (knockout): {result.age_prediction_with_knockout}")
+            typer.echo(f"Delta age: {result.delta_age}")
+            if result.warning:
+                typer.echo(f"Warning: {result.warning}")
+
+
 if __name__ == "__main__":
     app()
 
